@@ -10,15 +10,111 @@ class UsersController < ApplicationController
   # GET /users/1
   # GET /users/1.json
   def show
-    user_id = @user.id
+    user = @user.id.to_s
     result = MatchesIndex.filter{match_all}
-      .post_filter{ players.player == '5651d7a2c745f10329000000' }
-      .aggs({ game_count: { value_count: { field: 'game' } } })
-      .aggs({ game_score: { sum: { field: 'left_team_score' } } }).filter{ players.player == '5651d7a2c745f10329000000' and players.team == 'left'}
+      .search_type('count')
+      .aggs(
+        "rating" => {
+           "nested" => {
+              "path" => "players"
+           },
+           "aggs" => {
+              "place" => {
+                 "terms" => {
+                    "field" => "players.player",
+                    "order" => {
+                       "avg_score_sort" => "desc"
+                    }
+                 },
+                 "aggs" => {
+                    "avg_score_sort" => {
+                       "avg" => {
+                          "field" => "players.avg_score"
+                       }
+                    }
+                 }
+              }
+           }
+        },
+        "statistics" => {
+           "filter" => {
+              "nested" => {
+                 "path" => "players",
+                 "query" => {
+                    "match" => {
+                       "players.player" => user
+                    }
+                 }
+              }
+           },
+           "aggs" => {
+              "match_count" => {
+                 "value_count" => {
+                    "field" => "game_count"
+                 }
+              },
+              "game_count" => {
+                 "sum" => {
+                    "field" => "game_count"
+                 }
+              },
+              "players" => {
+                 "nested" => {
+                    "path" => "players"
+                 },
+                 "aggs" => {
+                    "player" => {
+                       "filter" => {
+                          "query" => {
+                             "match" => {
+                                "players.player" => user
+                             }
+                          }
+                       },
+                       "aggs" => {
+                          "total_score" => {
+                             "sum" => {
+                                "field" => "players.match_score"
+                             }
+                          },
+                          "avg_score" => {
+                             "avg" => {
+                                "field" => "players.avg_score"
+                             }
+                          },
+                          "winned_games" => {
+                             "sum" => {
+                                "field" => "players.winned_games"
+                             }
+                          },
+                          "winned_matches" => {
+                             "filter" => {
+                                "query" => {
+                                   "range" => {
+                                      "players.match_score" => {
+                                         "gte" => 20
+                                      }
+                                   }
+                                }
+                             }
+                          }
+                       }
+                    }
+                 }
+              }
+           }
+        }
+      )
+    stats = result.aggs['statistics']
+    player = stats['players']['player']
+
     @statistics = {
-      match_count: result.total_count,
-      game_count: result.aggs['game_count']['value'],
-      game_score: result.aggs['game_score']['value']
+      match_count: stats['match_count']['value'],
+      game_count: stats['game_count']['value'],
+      total_score: player['total_score']['value'],
+      avg_score: player['avg_score']['value'],
+      winned_games: player['winned_games']['value'],
+      winned_matches: player['winned_matches']['doc_count']
       # all: result.aggs
     }
   end
