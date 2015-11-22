@@ -11,10 +11,5 @@ class MatchesIndex < Chewy::Index
         end
     end
     field :game_count, type: 'integer', value: -> { games.count }
-    field :games, type: 'nested' do
-      field :game, value: ->{ id.to_s }
-      field :left_team_score, type: 'integer'
-      field :right_team_score, type: 'integer'
-    end
   end
 end
